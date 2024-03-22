@@ -37,7 +37,6 @@ lazy_static! {
             ((MODIFIER_NONE, Key::Down), vec![Action::CursorDown]),
             ((MODIFIER_NONE, Key::Delete), vec![Action::DeleteAtCursor]),
             ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
-            ((MODIFIER_NONE, Key::Insert), vec![Action::ToggleInsertMode]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -59,7 +58,6 @@ lazy_static! {
             ((MODIFIER_NONE, Key::Down), vec![Action::CursorDown]),
             ((MODIFIER_NONE, Key::Delete), vec![Action::DeleteAtCursor]),
             ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
-            ((MODIFIER_NONE, Key::Insert), vec![Action::ToggleInsertMode]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -81,7 +79,6 @@ lazy_static! {
             ((MODIFIER_NONE, Key::Down), vec![Action::CursorDown]),
             ((MODIFIER_NONE, Key::Delete), vec![Action::DeleteAtCursor]),
             ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
-            ((MODIFIER_NONE, Key::Insert), vec![Action::ToggleInsertMode]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -103,7 +100,6 @@ lazy_static! {
             ((MODIFIER_NONE, Key::Down), vec![Action::CursorDown]),
             ((MODIFIER_NONE, Key::Delete), vec![Action::DeleteAtCursor]),
             // ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
-            ((MODIFIER_NONE, Key::Insert), vec![Action::ToggleInsertMode]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -165,7 +161,6 @@ pub enum Action {
     CursorDown,
     DrawCharAtCursor(char),
     DeleteAtCursor,
-    ToggleInsertMode,
     Transition(Box<dyn Fn() -> (InputMode, Box<dyn InputCallback + Sync>) + Sync>),
 }
 
