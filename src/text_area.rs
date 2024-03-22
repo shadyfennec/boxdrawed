@@ -201,6 +201,10 @@ impl TextArea {
             .into()
     }
 
+    pub fn cursor_absolute_position(&self) -> Coordinates {
+        self.cursor_absolute_position
+    }
+
     pub fn ensure_cache(&mut self) {
         if self.view_cache.is_none() {
             self.view_cache = Some(
@@ -217,13 +221,39 @@ impl TextArea {
         self.view_cache.as_ref().unwrap().iter().copied()
     }
 
+    fn adjust_view_to_cursor(&mut self) {
+        if self.cursor_absolute_position.x < self.bounding_box.top_left.x {
+            self.bounding_box.top_left.x = self.cursor_absolute_position.x
+        }
+
+        if self.cursor_absolute_position.x
+            >= self.bounding_box.top_left.x + self.bounding_box.width as isize
+        {
+            self.bounding_box.top_left.x =
+                self.cursor_absolute_position.x - (self.bounding_box.width as isize - 1);
+        }
+
+        if self.cursor_absolute_position.y < self.bounding_box.top_left.y {
+            self.bounding_box.top_left.y = self.cursor_absolute_position.y
+        }
+
+        if self.cursor_absolute_position.y
+            >= self.bounding_box.top_left.y + self.bounding_box.height as isize
+        {
+            self.bounding_box.top_left.y =
+                self.cursor_absolute_position.y - (self.bounding_box.height as isize - 1);
+        }
+    }
+
     pub fn move_cursor(&mut self, direction: Direction) {
         self.cursor_absolute_position += direction.vector();
+        self.adjust_view_to_cursor();
         self.view_cache = None;
     }
 
     pub fn move_cursor_by(&mut self, direction: Direction, amount: usize) {
         self.cursor_absolute_position += direction.vector() * amount as isize;
+        self.adjust_view_to_cursor();
         self.view_cache = None;
     }
 
@@ -276,5 +306,12 @@ impl TextArea {
         self.clear();
         self.reset_cursor();
         self.write_string_at_cursor(s);
+    }
+
+    pub fn set_size(&mut self, width: usize, height: usize) {
+        self.bounding_box.width = width;
+        self.bounding_box.height = height;
+        self.view_cache = None;
+        self.cursor_absolute_position = self.bounding_box.top_left;
     }
 }

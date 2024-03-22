@@ -1,6 +1,7 @@
 use std::{
     collections::HashMap,
-    sync::mpsc::{Receiver, TryRecvError},
+    fmt,
+    sync::mpsc::{channel, Receiver, Sender, TryRecvError},
 };
 
 use lazy_static::lazy_static;
@@ -37,6 +38,8 @@ lazy_static! {
             ((MODIFIER_NONE, Key::Down), vec![Action::CursorDown]),
             ((MODIFIER_NONE, Key::Delete), vec![Action::DeleteAtCursor]),
             ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
+            ((MODIFIER_NONE, Key::Minus), vec![Action::ReduceFontSize]),
+            ((MODIFIER_NONE, Key::Equal), vec![Action::IncreaseFontSize]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -58,6 +61,8 @@ lazy_static! {
             ((MODIFIER_NONE, Key::Down), vec![Action::CursorDown]),
             ((MODIFIER_NONE, Key::Delete), vec![Action::DeleteAtCursor]),
             ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
+            ((MODIFIER_NONE, Key::Minus), vec![Action::ReduceFontSize]),
+            ((MODIFIER_NONE, Key::Equal), vec![Action::IncreaseFontSize]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -79,6 +84,8 @@ lazy_static! {
             ((MODIFIER_NONE, Key::Down), vec![Action::CursorDown]),
             ((MODIFIER_NONE, Key::Delete), vec![Action::DeleteAtCursor]),
             ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
+            ((MODIFIER_NONE, Key::Minus), vec![Action::ReduceFontSize]),
+            ((MODIFIER_NONE, Key::Equal), vec![Action::IncreaseFontSize]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -100,6 +107,8 @@ lazy_static! {
             ((MODIFIER_NONE, Key::Down), vec![Action::CursorDown]),
             ((MODIFIER_NONE, Key::Delete), vec![Action::DeleteAtCursor]),
             // ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
+            ((MODIFIER_NONE, Key::Minus), vec![Action::ReduceFontSize]),
+            ((MODIFIER_NONE, Key::Equal), vec![Action::IncreaseFontSize]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -120,11 +129,36 @@ impl BoxMode {
     }
 }
 
-pub struct TextMode;
+struct TextModeCallback {
+    tx: Sender<char>,
+}
+
+impl InputCallback for TextModeCallback {
+    fn add_char(&mut self, uni_char: u32) {
+        if let Some(c) = char::from_u32(uni_char) {
+            if !c.is_control() {
+                let _ = self.tx.send(c);
+            }
+        }
+    }
+}
+
+impl TextModeCallback {
+    pub fn new() -> (Self, Receiver<char>) {
+        let (tx, rx) = channel();
+        (Self { tx }, rx)
+    }
+}
+
+pub struct TextMode {
+    rx: Receiver<char>,
+}
 
 impl TextMode {
     pub fn transition() -> (InputMode, Box<dyn InputCallback + Sync>) {
-        (InputMode::Text(TextMode), Box::new(DummyCallback))
+        let (callback, rx) = TextModeCallback::new();
+
+        (InputMode::Text(TextMode { rx }), Box::new(callback))
     }
 }
 
@@ -161,6 +195,8 @@ pub enum Action {
     CursorDown,
     DrawCharAtCursor(char),
     DeleteAtCursor,
+    ReduceFontSize,
+    IncreaseFontSize,
     Transition(Box<dyn Fn() -> (InputMode, Box<dyn InputCallback + Sync>) + Sync>),
 }
 
@@ -169,6 +205,17 @@ pub enum InputMode {
     Text(TextMode),
     Color(ColorMode),
     Extra(ExtraMode),
+}
+
+impl fmt::Display for InputMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            InputMode::Box(_) => write!(f, "Box"),
+            InputMode::Text(_) => write!(f, "Text"),
+            InputMode::Color(_) => write!(f, "Color"),
+            InputMode::Extra(_) => write!(f, "Extra"),
+        }
+    }
 }
 
 impl InputMode {
@@ -182,8 +229,8 @@ impl InputMode {
     }
 
     pub fn process_callbacks(&mut self) -> Vec<Action> {
-        if let InputMode::Extra(ExtraMode { rx, buffer }) = self {
-            match rx.try_recv() {
+        match self {
+            InputMode::Extra(ExtraMode { rx, buffer }) => match rx.try_recv() {
                 Ok(c) => match c {
                     InputAction::Char(c) => {
                         if c.is_whitespace() {
@@ -215,9 +262,16 @@ impl InputMode {
                 Err(TryRecvError::Empty) => {
                     vec![]
                 }
+            },
+            InputMode::Text(TextMode { rx }) => {
+                let mut v = Vec::new();
+                while let Ok(c) = rx.try_recv() {
+                    v.push(Action::DrawCharAtCursor(c));
+                    v.push(Action::CursorRight)
+                }
+                v
             }
-        } else {
-            vec![]
+            _ => vec![],
         }
     }
 

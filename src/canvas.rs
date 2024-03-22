@@ -197,8 +197,6 @@ impl Canvas {
         );
         let bottom_line = TextArea::new(width / font.character_width(), 1);
 
-        dbg!(width, height);
-
         Self {
             frame_buffer: FrameBuffer::new(width, height),
             font,
@@ -228,7 +226,7 @@ impl Canvas {
             .draw(self.draw_area.chars(), &mut self.font, (0, 1));
 
         self.frame_buffer.draw(
-            self.top_line.chars(),
+            self.bottom_line.chars(),
             &mut self.font,
             (0, ((self.frame_buffer.height / char_height) - 1) as _),
         );
@@ -249,5 +247,22 @@ impl Canvas {
 
     pub fn get_buffer(&self) -> &[u32] {
         &self.frame_buffer.buffer
+    }
+
+    pub fn font_size(&self) -> f32 {
+        self.font.font_size
+    }
+
+    pub fn set_font_size(&mut self, value: f32) {
+        self.font.font_size = value;
+
+        self.top_line
+            .set_size(self.width() / self.font.character_width(), 1);
+        self.draw_area.set_size(
+            self.width() / self.font.character_width(),
+            (self.height() / self.font.character_height()) - 2,
+        );
+        self.bottom_line
+            .set_size(self.width() / self.font.character_width(), 1);
     }
 }
