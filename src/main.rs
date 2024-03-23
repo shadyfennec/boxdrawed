@@ -7,6 +7,8 @@ use minifb::{Key, KeyRepeat, Window, WindowOptions};
 mod canvas;
 use canvas::Canvas;
 
+mod keymap;
+
 mod input_mode;
 use input_mode::{Action, BoxMode, ExtraMode, InputMode};
 
@@ -25,6 +27,7 @@ struct App {
     canvas: Canvas,
     input_mode: InputMode,
     frame_durations: VecDeque<u64>,
+    keys: Vec<Key>,
 }
 
 impl App {
@@ -34,6 +37,7 @@ impl App {
             canvas: Canvas::new(font, font_size, width, height),
             input_mode: InputMode::Box(BoxMode),
             frame_durations: VecDeque::with_capacity(64),
+            keys: Vec::new(),
         }
     }
 
@@ -60,6 +64,7 @@ impl App {
     }
 
     fn handle_keys(&mut self) {
+        self.keys = self.window.get_keys();
         let callbacks = self.input_mode.process_callbacks();
 
         for action in callbacks.iter().chain(self.input_mode.handle_keys(
@@ -105,11 +110,16 @@ impl App {
         self.canvas.top_line.reset_cursor();
         self.canvas.top_line.clear();
         self.canvas.top_line.write_string_at_cursor(&format!(
-            "[{:.2}fps] X = {}, Y = {}, mode = {}",
+            "[{:.2}fps] X = {}, Y = {}, mode = {}, keys = [{}]",
             1.0 / frames,
             self.canvas.draw_area.cursor_absolute_position().x,
             self.canvas.draw_area.cursor_absolute_position().y,
             self.input_mode,
+            self.keys
+                .iter()
+                .map(|k| format!("{k:?}"))
+                .collect::<Vec<_>>()
+                .join(", "),
         ));
     }
 
