@@ -1,5 +1,6 @@
-use std::path::PathBuf;
+use std::{collections::VecDeque, path::PathBuf, time::Instant};
 
+use clap::Parser;
 use fontdue::{Font, FontSettings};
 use minifb::{Key, KeyRepeat, Window, WindowOptions};
 
@@ -19,12 +20,11 @@ use crate::input_mode::{Modifiers, MODIFIER_ALT, MODIFIER_CTRL, MODIFIER_NONE, M
 const WIDTH: usize = 1280;
 const HEIGHT: usize = 720;
 
-const FONT: &[u8] = include_bytes!("../resources/pp.ttf");
-
 struct App {
     window: Window,
     canvas: Canvas,
     input_mode: InputMode,
+    frame_durations: VecDeque<u64>,
 }
 
 impl App {
@@ -33,6 +33,7 @@ impl App {
             window,
             canvas: Canvas::new(font, font_size, width, height),
             input_mode: InputMode::Box(BoxMode),
+            frame_durations: VecDeque::with_capacity(64),
         }
     }
 
@@ -86,18 +87,29 @@ impl App {
                 Action::IncreaseFontSize => {
                     self.canvas.set_font_size(self.canvas.font_size() + 2.0);
                 }
+                Action::Undo => self.canvas.draw_area.undo(),
+                Action::Redo => self.canvas.draw_area.redo(),
             }
         }
     }
 
     fn top_line(&mut self) {
+        let frames = self.frame_durations.iter().sum::<u64>();
+        let frames = if self.frame_durations.is_empty() {
+            0
+        } else {
+            frames / self.frame_durations.len() as u64
+        } as f64
+            / 1_000_000_000.0;
+
         self.canvas.top_line.reset_cursor();
         self.canvas.top_line.clear();
         self.canvas.top_line.write_string_at_cursor(&format!(
-            "X = {}, Y = {}, mode = {}",
+            "[{:.2}fps] X = {}, Y = {}, mode = {}",
+            1.0 / frames,
             self.canvas.draw_area.cursor_absolute_position().x,
             self.canvas.draw_area.cursor_absolute_position().y,
-            self.input_mode
+            self.input_mode,
         ));
     }
 
@@ -116,6 +128,7 @@ impl App {
     }
 
     pub fn update(&mut self) {
+        let start = Instant::now();
         self.handle_keys();
 
         self.top_line();
@@ -129,14 +142,25 @@ impl App {
                 self.canvas.width(),
                 self.canvas.height(),
             )
-            .unwrap()
+            .unwrap();
+
+        self.frame_durations
+            .push_back(start.elapsed().as_nanos() as u64);
+        if self.frame_durations.len() > 64 {
+            self.frame_durations.pop_front();
+        }
     }
 }
 
+#[derive(Debug, Parser)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// The path to the font to use
+    font: PathBuf,
+}
+
 fn main() {
-    let font_path = PathBuf::from(std::env::args().nth(1).expect(
-        "Provide a path to a .ttf monospace font as the first argument of the executable.",
-    ));
+    let args = Args::parse();
 
     let mut window = Window::new("BoxDrawEd", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
 
@@ -144,7 +168,7 @@ fn main() {
     window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
 
     let font =
-        Font::from_bytes(std::fs::read(font_path).unwrap(), FontSettings::default()).unwrap();
+        Font::from_bytes(std::fs::read(args.font).unwrap(), FontSettings::default()).unwrap();
     let mut app = App::new(window, font, 36.0, WIDTH, HEIGHT);
 
     while app.is_open() {

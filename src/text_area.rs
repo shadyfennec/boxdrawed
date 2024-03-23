@@ -176,11 +176,59 @@ impl Direction {
     }
 }
 
+enum Change {
+    AddedChar(Coordinates, char),
+    RemovedChar(Coordinates, char),
+}
+
+struct History {
+    changes: Vec<Change>,
+    cursor: usize,
+}
+
+impl History {
+    pub fn new() -> Self {
+        Self {
+            changes: Vec::new(),
+            cursor: 0,
+        }
+    }
+
+    pub fn undo(&mut self) -> Option<&Change> {
+        if self.cursor == 0 {
+            None
+        } else {
+            self.cursor -= 1;
+            self.changes.get(self.cursor)
+        }
+    }
+
+    pub fn redo(&mut self) -> Option<&Change> {
+        if self.changes.len() == self.cursor {
+            None
+        } else {
+            let ret = self.changes.get(self.cursor);
+            self.cursor += 1;
+            ret
+        }
+    }
+
+    pub fn add(&mut self, change: Change) {
+        if self.changes.len() != self.cursor {
+            self.changes.truncate(self.cursor);
+        }
+
+        self.changes.push(change);
+        self.cursor += 1;
+    }
+}
+
 pub struct TextArea {
     text_storage: TextStorage,
     bounding_box: BoundingBox,
     cursor_absolute_position: Coordinates,
     view_cache: Option<Vec<(Coordinates, char)>>,
+    history: History,
 }
 
 impl TextArea {
@@ -190,6 +238,7 @@ impl TextArea {
             bounding_box: (Coordinates::from((0, 0)), width, height).into(),
             cursor_absolute_position: (0, 0).into(),
             view_cache: None,
+            history: History::new(),
         }
     }
 
@@ -264,13 +313,22 @@ impl TextArea {
             .and_modify(|x| *x = c)
             .or_insert(c);
 
+        self.history
+            .add(Change::AddedChar(self.cursor_absolute_position, c));
+
         self.view_cache = None;
     }
 
     pub fn erase_at_cursor(&mut self) {
-        self.text_storage
+        let old_char = self
+            .text_storage
             .characters
             .remove(&self.cursor_absolute_position);
+
+        if let Some(c) = old_char {
+            self.history
+                .add(Change::RemovedChar(self.cursor_absolute_position, c));
+        }
 
         self.view_cache = None;
     }
@@ -313,5 +371,45 @@ impl TextArea {
         self.bounding_box.height = height;
         self.view_cache = None;
         self.cursor_absolute_position = self.bounding_box.top_left;
+    }
+
+    pub fn undo(&mut self) {
+        if let Some(change) = self.history.undo() {
+            match change {
+                Change::AddedChar(pos, _) => {
+                    self.text_storage.characters.remove(pos);
+                    self.view_cache = None;
+                }
+                Change::RemovedChar(pos, c) => {
+                    self.text_storage
+                        .characters
+                        .entry(*pos)
+                        .and_modify(|x| *x = *c)
+                        .or_insert(*c);
+
+                    self.view_cache = None;
+                }
+            }
+        }
+    }
+
+    pub fn redo(&mut self) {
+        if let Some(change) = self.history.redo() {
+            match change {
+                Change::AddedChar(pos, c) => {
+                    self.text_storage
+                        .characters
+                        .entry(*pos)
+                        .and_modify(|x| *x = *c)
+                        .or_insert(*c);
+
+                    self.view_cache = None;
+                }
+                Change::RemovedChar(pos, _) => {
+                    self.text_storage.characters.remove(pos);
+                    self.view_cache = None;
+                }
+            }
+        }
     }
 }

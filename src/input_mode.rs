@@ -30,6 +30,11 @@ lazy_static! {
             ((MODIFIER_NONE, Key::W), vec![Action::DrawCharAtCursor('┐')]),
             ((MODIFIER_NONE, Key::A), vec![Action::DrawCharAtCursor('└')]),
             ((MODIFIER_NONE, Key::S), vec![Action::DrawCharAtCursor('┘')]),
+            ((MODIFIER_NONE, Key::E), vec![Action::DrawCharAtCursor('┴')]),
+            ((MODIFIER_NONE, Key::R), vec![Action::DrawCharAtCursor('├')]),
+            ((MODIFIER_NONE, Key::T), vec![Action::DrawCharAtCursor('┬')]),
+            ((MODIFIER_NONE, Key::Y), vec![Action::DrawCharAtCursor('┤')]),
+            ((MODIFIER_NONE, Key::U), vec![Action::DrawCharAtCursor('┼')]),
 
             // Controls
             ((MODIFIER_NONE, Key::Left), vec![Action::CursorLeft]),
@@ -40,6 +45,8 @@ lazy_static! {
             ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
             ((MODIFIER_NONE, Key::Minus), vec![Action::ReduceFontSize]),
             ((MODIFIER_NONE, Key::Equal), vec![Action::IncreaseFontSize]),
+            ((MODIFIER_CTRL, Key::Z), vec![Action::Undo]),
+            ((MODIFIER_CTRL, Key::Y), vec![Action::Redo]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -61,8 +68,10 @@ lazy_static! {
             ((MODIFIER_NONE, Key::Down), vec![Action::CursorDown]),
             ((MODIFIER_NONE, Key::Delete), vec![Action::DeleteAtCursor]),
             ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
-            ((MODIFIER_NONE, Key::Minus), vec![Action::ReduceFontSize]),
-            ((MODIFIER_NONE, Key::Equal), vec![Action::IncreaseFontSize]),
+            // ((MODIFIER_NONE, Key::Minus), vec![Action::ReduceFontSize]),
+            // ((MODIFIER_NONE, Key::Equal), vec![Action::IncreaseFontSize]),
+            ((MODIFIER_CTRL, Key::Z), vec![Action::Undo]),
+            ((MODIFIER_CTRL, Key::Y), vec![Action::Redo]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -86,6 +95,8 @@ lazy_static! {
             ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
             ((MODIFIER_NONE, Key::Minus), vec![Action::ReduceFontSize]),
             ((MODIFIER_NONE, Key::Equal), vec![Action::IncreaseFontSize]),
+            ((MODIFIER_CTRL, Key::Z), vec![Action::Undo]),
+            ((MODIFIER_CTRL, Key::Y), vec![Action::Redo]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -109,6 +120,8 @@ lazy_static! {
             // ((MODIFIER_NONE, Key::Backspace), vec![Action::CursorLeft, Action::DeleteAtCursor]),
             ((MODIFIER_NONE, Key::Minus), vec![Action::ReduceFontSize]),
             ((MODIFIER_NONE, Key::Equal), vec![Action::IncreaseFontSize]),
+            ((MODIFIER_CTRL, Key::Z), vec![Action::Undo]),
+            ((MODIFIER_CTRL, Key::Y), vec![Action::Redo]),
 
             // Transition
             ((MODIFIER_CTRL, Key::Key1), vec![Action::Transition(Box::new(BoxMode::transition))]),
@@ -198,6 +211,8 @@ pub enum Action {
     ReduceFontSize,
     IncreaseFontSize,
     Transition(Box<dyn Fn() -> (InputMode, Box<dyn InputCallback + Sync>) + Sync>),
+    Undo,
+    Redo,
 }
 
 pub enum InputMode {
