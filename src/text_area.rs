@@ -177,7 +177,7 @@ impl Direction {
 }
 
 enum Change {
-    AddedChar(Coordinates, char),
+    AddedChar(Coordinates, char, char),
     RemovedChar(Coordinates, char),
 }
 
@@ -225,7 +225,7 @@ impl History {
 
 pub struct TextArea {
     text_storage: TextStorage,
-    bounding_box: BoundingBox,
+    pub bounding_box: BoundingBox,
     cursor_absolute_position: Coordinates,
     view_cache: Option<Vec<(Coordinates, char)>>,
     history: History,
@@ -307,14 +307,21 @@ impl TextArea {
     }
 
     pub fn write_at_cursor(&mut self, c: char) {
+        let mut old = None;
         self.text_storage
             .characters
             .entry(self.cursor_absolute_position)
-            .and_modify(|x| *x = c)
+            .and_modify(|x| {
+                old = Some(*x);
+                *x = c
+            })
             .or_insert(c);
 
-        self.history
-            .add(Change::AddedChar(self.cursor_absolute_position, c));
+        self.history.add(Change::AddedChar(
+            self.cursor_absolute_position,
+            c,
+            old.unwrap_or(' '),
+        ));
 
         self.view_cache = None;
     }
@@ -370,14 +377,13 @@ impl TextArea {
         self.bounding_box.width = width;
         self.bounding_box.height = height;
         self.view_cache = None;
-        self.cursor_absolute_position = self.bounding_box.top_left;
     }
 
     pub fn undo(&mut self) {
         if let Some(change) = self.history.undo() {
             match change {
-                Change::AddedChar(pos, _) => {
-                    self.text_storage.characters.remove(pos);
+                Change::AddedChar(pos, _, old_char) => {
+                    self.text_storage.characters.insert(*pos, *old_char);
                     self.view_cache = None;
                 }
                 Change::RemovedChar(pos, c) => {
@@ -396,7 +402,7 @@ impl TextArea {
     pub fn redo(&mut self) {
         if let Some(change) = self.history.redo() {
             match change {
-                Change::AddedChar(pos, c) => {
+                Change::AddedChar(pos, c, _) => {
                     self.text_storage
                         .characters
                         .entry(*pos)

@@ -1,6 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, num::NonZeroU32, rc::Rc};
 
 use fontdue::{layout::GlyphRasterConfig, Font, Metrics};
+use softbuffer::Surface;
+use winit::window::Window;
 
 use crate::text_area::{BoundingBox, Coordinates, TextArea};
 
@@ -46,27 +48,26 @@ impl FontManager {
 }
 
 struct FrameBuffer {
-    buffer: Vec<u32>,
     width: usize,
     height: usize,
 }
 
 impl FrameBuffer {
     pub fn new(width: usize, height: usize) -> Self {
-        Self {
-            buffer: vec![0; width * height],
-            width,
-            height,
-        }
+        Self { width, height }
     }
 
-    fn lines<B>(&mut self, bounding_box: B) -> impl Iterator<Item = &mut [u32]> + '_
+    fn lines<'a, B>(
+        &'a self,
+        bounding_box: B,
+        buffer: &'a mut [u32],
+    ) -> impl Iterator<Item = &'a mut [u32]> + '_
     where
         B: Into<BoundingBox>,
     {
         let bounding_box = bounding_box.into();
 
-        self.buffer
+        buffer
             .chunks_mut(self.width)
             .skip(bounding_box.top_left.y as usize)
             .take(bounding_box.height)
@@ -77,7 +78,7 @@ impl FrameBuffer {
             })
     }
 
-    pub fn draw<I, C>(&mut self, chars: I, font: &mut FontManager, top_left: C)
+    pub fn draw<I, C>(&mut self, chars: I, font: &mut FontManager, top_left: C, buffer: &mut [u32])
     where
         I: IntoIterator<Item = (Coordinates, char)>,
         C: Into<Coordinates>,
@@ -108,39 +109,38 @@ impl FrameBuffer {
                     .height
                     .min(self.width - bounded_top_left.y.max(0).unsigned_abs());
 
-                if bounded_top_left.x < self.width as isize
-                    && bounded_top_left.y < self.height as isize
-                {
-                    for (dest_line, src_line) in self
-                        .lines((
+                for (dest_line, src_line) in self
+                    .lines(
+                        (
                             (bounded_top_left),
                             displayed_width - displacement_width,
                             displayed_height - displacement_height,
-                        ))
-                        .zip(
-                            bitmap
-                                .chunks(metrics.width)
-                                .skip(displacement_height)
-                                .take(displayed_height),
-                        )
-                    {
-                        let src = src_line[displacement_width
-                            ..displacement_width + (displayed_width - displacement_width)]
-                            .iter()
-                            .map(|v| u32::from_be_bytes([0, *v, *v, *v]))
-                            .collect::<Vec<_>>();
+                        ),
+                        buffer,
+                    )
+                    .zip(
+                        bitmap
+                            .chunks(metrics.width)
+                            .skip(displacement_height)
+                            .take(displayed_height),
+                    )
+                {
+                    let src = src_line[displacement_width
+                        ..displacement_width + (displayed_width - displacement_width)]
+                        .iter()
+                        .map(|v| u32::from_be_bytes([0, *v, *v, *v]))
+                        .collect::<Vec<_>>();
 
-                        for (dest, src) in dest_line.iter_mut().zip(src) {
-                            let mut d = dest.to_be_bytes();
-                            let s = src.to_be_bytes();
+                    for (dest, src) in dest_line.iter_mut().zip(src) {
+                        let mut d = dest.to_be_bytes();
+                        let s = src.to_be_bytes();
 
-                            if d != s {
-                                d[1] = d[1].saturating_add(s[1]);
-                                d[2] = d[2].saturating_add(s[2]);
-                                d[3] = d[3].saturating_add(s[3]);
+                        if d != s {
+                            d[1] = d[1].saturating_add(s[1]);
+                            d[2] = d[2].saturating_add(s[2]);
+                            d[3] = d[3].saturating_add(s[3]);
 
-                                *dest = u32::from_be_bytes(d);
-                            }
+                            *dest = u32::from_be_bytes(d);
                         }
                     }
                 }
@@ -148,8 +148,13 @@ impl FrameBuffer {
         }
     }
 
-    pub fn invert<B, C>(&mut self, bounding_box: B, top_left: C, font: &FontManager)
-    where
+    pub fn invert<B, C>(
+        &mut self,
+        bounding_box: B,
+        top_left: C,
+        font: &FontManager,
+        buffer: &mut [u32],
+    ) where
         B: Into<BoundingBox>,
         C: Into<Coordinates>,
     {
@@ -167,7 +172,7 @@ impl FrameBuffer {
             let character_top_left =
                 coord * Coordinates::from((char_width as isize, char_height as isize));
 
-            for dest_line in self.lines((character_top_left, char_width, char_height)) {
+            for dest_line in self.lines((character_top_left, char_width, char_height), buffer) {
                 for v in dest_line {
                     let [x, a, b, c] = v.to_be_bytes();
 
@@ -180,6 +185,7 @@ impl FrameBuffer {
 
 pub struct Canvas {
     frame_buffer: FrameBuffer,
+    surface: Surface<Rc<Window>, Rc<Window>>,
     font: FontManager,
     pub top_line: TextArea,
     pub draw_area: TextArea,
@@ -187,7 +193,13 @@ pub struct Canvas {
 }
 
 impl Canvas {
-    pub fn new(font: Font, font_size: f32, width: usize, height: usize) -> Self {
+    pub fn new(
+        font: Font,
+        font_size: f32,
+        surface: Surface<Rc<Window>, Rc<Window>>,
+        width: usize,
+        height: usize,
+    ) -> Self {
         let font = FontManager::new(font, font_size);
 
         let top_line = TextArea::new(width / font.character_width(), 1);
@@ -199,6 +211,7 @@ impl Canvas {
 
         Self {
             frame_buffer: FrameBuffer::new(width, height),
+            surface,
             font,
             top_line,
             draw_area,
@@ -216,19 +229,29 @@ impl Canvas {
 
     pub fn render(&mut self) {
         let char_height = self.font.character_height();
+        let mut buffer = self.surface.buffer_mut().unwrap();
 
-        self.clear();
+        for v in buffer.iter_mut() {
+            *v = 0
+        }
+
+        self.top_line.bounding_box.top_left = (0, 0).into();
+        self.bottom_line.bounding_box.top_left = (0, 0).into();
 
         self.frame_buffer
-            .draw(self.top_line.chars(), &mut self.font, (0, 0));
+            .draw(self.top_line.chars(), &mut self.font, (0, 0), &mut buffer);
 
         self.frame_buffer
-            .draw(self.draw_area.chars(), &mut self.font, (0, 1));
+            .draw(self.draw_area.chars(), &mut self.font, (0, 1), &mut buffer);
 
         self.frame_buffer.draw(
             self.bottom_line.chars(),
             &mut self.font,
-            (0, ((self.frame_buffer.height / char_height) - 1) as _),
+            (
+                0,
+                ((self.frame_buffer.height / char_height).saturating_sub(1)) as _,
+            ),
+            &mut buffer,
         );
 
         // make cursor inverted
@@ -236,17 +259,10 @@ impl Canvas {
             ((self.draw_area.cursor_relative_position()), 1, 1),
             (0, 1),
             &self.font,
+            &mut buffer,
         );
-    }
 
-    pub fn clear(&mut self) {
-        for v in &mut self.frame_buffer.buffer {
-            *v = 0
-        }
-    }
-
-    pub fn get_buffer(&self) -> &[u32] {
-        &self.frame_buffer.buffer
+        buffer.present().unwrap();
     }
 
     pub fn font_size(&self) -> f32 {
@@ -254,15 +270,41 @@ impl Canvas {
     }
 
     pub fn set_font_size(&mut self, value: f32) {
+        let old_value = self.font.font_size;
         self.font.font_size = value;
 
+        if self.font.character_height() > self.height() / 2
+            || self.font.character_width() > self.width() / 2
+        {
+            self.font.font_size = old_value
+        } else {
+            self.top_line
+                .set_size(self.width() / self.font.character_width(), 1);
+            self.draw_area.set_size(
+                self.width() / self.font.character_width(),
+                (self.height() / self.font.character_height()).saturating_sub(1),
+            );
+            self.bottom_line
+                .set_size(self.width() / self.font.character_width(), 1);
+        }
+    }
+
+    pub fn resize(&mut self, width: NonZeroU32, height: NonZeroU32) {
+        self.surface.resize(width, height).unwrap();
+
+        let width = width.get() as usize;
+        let height = height.get() as usize;
+
+        self.frame_buffer.width = width;
+        self.frame_buffer.height = height;
+
         self.top_line
-            .set_size(self.width() / self.font.character_width(), 1);
+            .set_size(width / self.font.character_width(), 1);
         self.draw_area.set_size(
-            self.width() / self.font.character_width(),
-            (self.height() / self.font.character_height()) - 2,
+            width / self.font.character_width(),
+            (height / self.font.character_height()).saturating_sub(1),
         );
         self.bottom_line
-            .set_size(self.width() / self.font.character_width(), 1);
+            .set_size(width / self.font.character_width(), 1);
     }
 }
