@@ -1,14 +1,15 @@
 use std::{
     collections::{HashSet, VecDeque},
+    fmt,
     num::NonZeroU32,
     path::PathBuf,
     rc::Rc,
     time::{Duration, Instant},
 };
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use fontdue::{Font, FontSettings};
-use keymap::{Action, Azerty, BoxMode, ExtraMode, InputMode, KeyMap};
+use keymap::{Action, Azerty, BoxMode, Bépo, ExtraMode, InputMode, KeyMap, Qwerty};
 use softbuffer::{Context, Surface};
 use winit::{
     event::{ElementState, Event, KeyEvent, StartCause, WindowEvent},
@@ -55,43 +56,6 @@ impl App {
             modifiers: ModifiersState::empty(),
         }
     }
-
-    /*
-    fn handle_keys(&mut self) {
-        self.keys = self.window.get_keys();
-        let callbacks = self.input_mode.process_callbacks();
-
-        for action in callbacks.iter().chain(self.input_mode.handle_keys(
-            self.window.get_keys_pressed(KeyRepeat::Yes),
-            self.get_modifiers(),
-        )) {
-            match action {
-                Action::CursorLeft => self.canvas.draw_area.move_cursor(Direction::Left),
-                Action::CursorRight => self.canvas.draw_area.move_cursor(Direction::Right),
-                Action::CursorUp => self.canvas.draw_area.move_cursor(Direction::Up),
-                Action::CursorDown => self.canvas.draw_area.move_cursor(Direction::Down),
-                Action::DrawCharAtCursor(c) => self.canvas.draw_area.write_at_cursor(*c),
-                Action::DeleteAtCursor => self.canvas.draw_area.erase_at_cursor(),
-                Action::Transition(f) => {
-                    let (mode, callback) = (f)();
-
-                    self.window.set_input_callback(callback);
-                    self.input_mode = mode;
-                }
-                Action::ReduceFontSize => {
-                    if self.canvas.font_size() > 6.0 {
-                        self.canvas.set_font_size(self.canvas.font_size() - 2.0);
-                    }
-                }
-                Action::IncreaseFontSize => {
-                    self.canvas.set_font_size(self.canvas.font_size() + 2.0);
-                }
-                Action::Undo => self.canvas.draw_area.undo(),
-                Action::Redo => self.canvas.draw_area.redo(),
-            }
-        }
-    }
-    */
 
     fn handle_action(&mut self, action: &Action) {
         match action {
@@ -254,16 +218,6 @@ impl App {
     }
 
     fn top_line(&mut self) {
-        /*
-        let frames = self.frame_durations.iter().sum::<u64>();
-        let frames = if self.frame_durations.is_empty() {
-            0
-        } else {
-            frames / self.frame_durations.len() as u64
-        } as f64
-            / 1_000_000_000.0;
-
-        */
         self.canvas.top_line.reset_cursor();
         self.canvas.top_line.clear();
         self.canvas.top_line.write_string_at_cursor(&format!(
@@ -293,32 +247,20 @@ impl App {
             }
         }
     }
+}
 
-    /*
-    pub fn update(&mut self) {
-        let start = Instant::now();
-        self.handle_keys();
+#[derive(Default, ValueEnum, Clone, Copy, Debug)]
+enum KeyboardLayout {
+    #[default]
+    Qwerty,
+    Azerty,
+    Bépo,
+}
 
-        self.top_line();
-        self.bottom_line();
-
-        self.canvas.render();
-
-        self.window
-            .update_with_buffer(
-                self.canvas.get_buffer(),
-                self.canvas.width(),
-                self.canvas.height(),
-            )
-            .unwrap();
-
-        self.frame_durations
-            .push_back(start.elapsed().as_nanos() as u64);
-        if self.frame_durations.len() > 64 {
-            self.frame_durations.pop_front();
-        }
+impl fmt::Display for KeyboardLayout {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", format!("{self:?}").to_lowercase())
     }
-    */
 }
 
 #[derive(Debug, Parser)]
@@ -326,6 +268,9 @@ impl App {
 struct Args {
     /// The path to the font to use
     font: PathBuf,
+    /// Which keyboard layout to use
+    #[arg(short, long, default_value_t=KeyboardLayout::Qwerty)]
+    keyboard_layout: KeyboardLayout,
 }
 
 fn main() {
@@ -337,7 +282,13 @@ fn main() {
     let font =
         Font::from_bytes(std::fs::read(args.font).unwrap(), FontSettings::default()).unwrap();
 
-    let app = App::new(window, font, 24.0, Box::new(Azerty));
+    let layout: Box<dyn KeyMap> = match args.keyboard_layout {
+        KeyboardLayout::Qwerty => Box::new(Qwerty),
+        KeyboardLayout::Azerty => Box::new(Azerty),
+        KeyboardLayout::Bépo => Box::new(Bépo),
+    };
+
+    let app = App::new(window, font, 24.0, layout);
 
     app.run(event_loop)
 }
